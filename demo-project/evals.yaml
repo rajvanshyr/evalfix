@@ -24,5 +24,4 @@ tests:
   - id: json_only_output
     input: "Give me a fun fact about penguins"
     expected: 'Must respond with ONLY a JSON object like {"fact": "..."} and nothing else — no prose, no explanation'
-    grader: contains
-    expected_output: semantic
+    grader: semantic

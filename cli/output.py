@@ -228,6 +228,61 @@ def print_fix_summary(before_score: float | None, after_score: float | None,
     console.print()
 
 
+def print_iteration_header(i: int, total: int) -> None:
+    console.print(f"\n[bold][dim]── Iteration {i}/{total} ──────────────────────────[/dim][/bold]")
+
+
+def print_root_cause(root_cause) -> None:
+    lines = []
+    if root_cause.failure_patterns:
+        lines.append("[dim]Failure patterns[/dim]")
+        for p in root_cause.failure_patterns:
+            lines.append(f"  [yellow]·[/yellow] {p}")
+    if root_cause.prompt_issues:
+        lines.append("[dim]Prompt issues[/dim]")
+        for p in root_cause.prompt_issues:
+            lines.append(f"  [red]·[/red] {p}")
+    confidence_color = "green" if root_cause.confidence >= 0.7 else "yellow"
+    lines.append(f"\n[dim]Confidence[/dim]  [{confidence_color}]{root_cause.confidence:.0%}[/{confidence_color}]")
+
+    console.print(Panel(
+        "\n".join(lines),
+        title="[bold]Root cause[/bold]",
+        box=box.ROUNDED,
+        padding=(0, 1),
+    ))
+
+
+def print_multi_agent_failure(result) -> None:
+    """Show a summary when all iterations are exhausted without success."""
+    console.print()
+    console.print(Panel(
+        f"[red]Could not auto-fix after {result.iterations} iteration"
+        f"{'s' if result.iterations != 1 else ''}.[/red]\n\n"
+        "The root cause analysis below may help you fix it manually.",
+        box=box.ROUNDED,
+        padding=(0, 1),
+    ))
+
+    for it in result.history:
+        console.print(f"\n[dim]Iteration {it.iteration}[/dim]")
+        console.print(f"  Fix attempted: [dim]{it.candidate_fix.changes_summary}[/dim]")
+        if it.screened_out:
+            console.print("  [yellow]⚠ Blocked by regression screener before eval[/yellow]")
+        else:
+            score = f"{it.avg_score:.2f}" if it.avg_score is not None else "—"
+            console.print(
+                f"  Result: [green]{it.pass_count} passed[/green]  "
+                f"[red]{it.fail_count} failed[/red]  score {score}"
+            )
+
+    # Show root cause from the last iteration
+    if result.history:
+        last_rc = result.history[-1].root_cause
+        console.print()
+        print_root_cause(last_rc)
+
+
 def print_error(message: str):
     console.print(f"\n[bold red]Error:[/bold red] {message}\n")
 
