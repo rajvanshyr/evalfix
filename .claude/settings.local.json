@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python --version && pip show click rich pyyaml 2>&1 | grep -E \"^\\(Name|Version|---\\)\")",
+      "Bash(pip install:*)",
+      "Bash(evalfix init:*)"
+    ]
+  }
+}

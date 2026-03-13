@@ -1,0 +1,133 @@
+<div id="opt-{{ opt_run.id }}" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+  <!-- Header -->
+  <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="font-semibold text-gray-900 text-sm">Optimization</span>
+
+      {% if opt_run.status == 'completed' %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Completed</span>
+      {% elif opt_run.status == 'running' %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Running</span>
+      {% elif opt_run.status == 'failed' %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Failed</span>
+      {% else %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Pending</span>
+      {% endif %}
+
+      {% if opt_run.optimizer_model %}
+        <span class="text-xs text-gray-400 font-mono">{{ opt_run.optimizer_model }}</span>
+      {% endif %}
+    </div>
+    <span class="text-xs text-gray-400">{{ opt_run.created_at.strftime('%b %d, %Y %H:%M') }}</span>
+  </div>
+
+  {% if opt_run.status == 'failed' %}
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+      <p class="text-sm font-semibold text-red-700 mb-1">Error</p>
+      <p class="text-sm text-red-600 font-mono">{{ opt_run.error or 'Unknown error' }}</p>
+    </div>
+  {% endif %}
+
+  {% if opt_run.status == 'completed' %}
+    <!-- Reasoning -->
+    {% if opt_run.reasoning %}
+      <div x-data="{ showReasoning: false }" class="mb-4">
+        <button
+          @click="showReasoning = !showReasoning"
+          class="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+        >
+          <svg class="w-4 h-4 transition-transform" :class="showReasoning ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+          Reasoning
+        </button>
+        <div x-show="showReasoning" class="mt-2">
+          <div class="bg-indigo-50 rounded-lg p-4">
+            <p class="text-sm text-indigo-800 italic leading-relaxed">{{ opt_run.reasoning }}</p>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Diff viewer -->
+    {% if diff_lines %}
+      <div class="mb-4">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Prompt Changes</p>
+        <div class="rounded-lg border border-gray-200 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs font-mono">
+              <tbody>
+                {% for line in diff_lines %}
+                  {% if line.type == 'file_header' %}
+                    {# skip #}
+                  {% elif line.type == 'add' %}
+                    <tr class="bg-green-50">
+                      <td class="w-5 px-2 py-0.5 text-green-600 select-none text-center border-r border-green-100">+</td>
+                      <td class="px-3 py-0.5 text-green-800 whitespace-pre-wrap break-words">{{ line.content }}</td>
+                    </tr>
+                  {% elif line.type == 'remove' %}
+                    <tr class="bg-red-50">
+                      <td class="w-5 px-2 py-0.5 text-red-600 select-none text-center border-r border-red-100">-</td>
+                      <td class="px-3 py-0.5 text-red-800 whitespace-pre-wrap break-words line-through opacity-75">{{ line.content }}</td>
+                    </tr>
+                  {% elif line.type == 'hunk_header' %}
+                    <tr class="bg-slate-100">
+                      <td class="w-5 px-2 py-0.5 text-slate-400 select-none text-center border-r border-slate-200"> </td>
+                      <td class="px-3 py-0.5 text-slate-500 text-xs">{{ line.content }}</td>
+                    </tr>
+                  {% else %}
+                    <tr>
+                      <td class="w-5 px-2 py-0.5 text-gray-400 select-none text-center border-r border-gray-100"> </td>
+                      <td class="px-3 py-0.5 text-gray-600 whitespace-pre-wrap break-words">{{ line.content }}</td>
+                    </tr>
+                  {% endif %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Action buttons -->
+    {% if accepted %}
+      <div class="flex items-center gap-2 pt-3 border-t border-gray-100">
+        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span class="text-sm text-emerald-700 font-medium">
+          Accepted{% if result_version %} — now v{{ result_version.version_number }}{% endif %}
+        </span>
+      </div>
+    {% elif rejected %}
+      <div class="flex items-center gap-2 pt-3 border-t border-gray-100">
+        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        <span class="text-sm text-gray-500 font-medium">Rejected</span>
+      </div>
+    {% elif result_version and result_version.status == 'draft' %}
+      <div class="flex items-center gap-3 pt-3 border-t border-gray-100">
+        <button
+          hx-post="/optimizations/{{ opt_run.id }}/accept"
+          hx-target="#opt-{{ opt_run.id }}"
+          hx-swap="outerHTML"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          Accept Changes
+        </button>
+        <button
+          hx-post="/optimizations/{{ opt_run.id }}/reject"
+          hx-target="#opt-{{ opt_run.id }}"
+          hx-swap="outerHTML"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-white text-red-600 text-sm font-semibold rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
+        >
+          Reject
+        </button>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>

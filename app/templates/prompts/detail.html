@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+{% block content %}
+<div
+  x-data="{
+    tab: 'versions',
+    addVersionOpen: false,
+    addFailureOpen: false,
+    addTestCaseOpen: false,
+    optModalOpen: false
+  }"
+  @closeoptmodal.window="optModalOpen = false"
+>
+  <!-- Breadcrumb -->
+  <div class="mb-5">
+    <a href="/dashboard/projects/{{ project.id }}" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-indigo-600 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+      {{ project.name }}
+    </a>
+  </div>
+
+  <!-- Header -->
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ prompt.name }}</h1>
+    {% if prompt.description %}
+      <p class="text-gray-500 mt-1">{{ prompt.description }}</p>
+    {% endif %}
+
+    <!-- Status row -->
+    <div class="flex items-center gap-3 mt-3">
+      {% if current_version %}
+        <span id="current-version-badge" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+          v{{ current_version.version_number }} &middot; active
+        </span>
+      {% else %}
+        <span id="current-version-badge" class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+          No version yet
+        </span>
+      {% endif %}
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex items-center gap-2 mt-4">
+      <button
+        @click="addFailureOpen = true; tab = 'failures'"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+      >
+        <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        Add Failure
+      </button>
+      <button
+        @click="addTestCaseOpen = true; tab = 'test_cases'"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+      >
+        <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+        Add Test Case
+      </button>
+      <button
+        @click="optModalOpen = true"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        Run Optimization
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="border-b border-gray-200 mb-6">
+    <nav class="-mb-px flex gap-6">
+      <button
+        @click="tab = 'versions'"
+        :class="tab === 'versions' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700 border-b-2 border-transparent'"
+        class="pb-3 text-sm font-medium transition-colors"
+      >
+        Versions ({{ versions|length }})
+      </button>
+      <button
+        @click="tab = 'test_cases'"
+        :class="tab === 'test_cases' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700 border-b-2 border-transparent'"
+        class="pb-3 text-sm font-medium transition-colors"
+      >
+        Test Cases ({{ test_cases|length }})
+      </button>
+      <button
+        @click="tab = 'failures'"
+        :class="tab === 'failures' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700 border-b-2 border-transparent'"
+        class="pb-3 text-sm font-medium transition-colors"
+      >
+        Failures ({{ failures|length }})
+      </button>
+      <button
+        @click="tab = 'optimizations'"
+        :class="tab === 'optimizations' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700 border-b-2 border-transparent'"
+        class="pb-3 text-sm font-medium transition-colors"
+      >
+        Optimizations ({{ optimizations|length }})
+      </button>
+    </nav>
+  </div>
+
+  <!-- Versions tab -->
+  <div x-show="tab === 'versions'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Versions</h2>
+      <button
+        @click="addVersionOpen = true"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Version
+      </button>
+    </div>
+    <div id="versions-list" class="space-y-4">
+      {% for version in versions %}
+        {% set is_current = (current_version and version.id == current_version.id) %}
+        {% include "versions/_card.html" %}
+      {% else %}
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+          <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <p class="text-gray-500 text-sm">No versions yet. Add a version to start tracking your prompt.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Test Cases tab -->
+  <div x-show="tab === 'test_cases'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Test Cases</h2>
+      <button
+        @click="addTestCaseOpen = true"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Test Case
+      </button>
+    </div>
+    <div id="test-cases-list" class="space-y-4">
+      {% for tc in test_cases %}
+        {% include "test_cases/_card.html" %}
+      {% else %}
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+          <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+          </div>
+          <p class="text-gray-500 text-sm">No test cases yet.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Failures tab -->
+  <div x-show="tab === 'failures'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Failures</h2>
+      <button
+        @click="addFailureOpen = true"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Failure
+      </button>
+    </div>
+    <div id="failures-list" class="space-y-4">
+      {% for failure in failures %}
+        {% include "failures/_card.html" %}
+      {% else %}
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+          <div class="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mb-3">
+            <svg class="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <p class="text-gray-500 text-sm">No failures recorded yet.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Optimizations tab -->
+  <div x-show="tab === 'optimizations'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Optimizations</h2>
+    </div>
+    <div id="optimizations-list" class="space-y-4">
+      {% for opt_run in optimizations %}
+        {% set result_version = result_versions.get(opt_run.id) %}
+        {% set diff_lines = diff_data.get(opt_run.id, []) %}
+        {% set accepted = (result_version and result_version.status == 'active') %}
+        {% set rejected = (result_version and result_version.status == 'archived') %}
+        {% include "optimizations/_card.html" %}
+      {% else %}
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+          <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <p class="text-gray-500 text-sm">No optimization runs yet. Click "Run Optimization" to improve this prompt.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- Add Version Modal -->
+  <div
+    x-show="addVersionOpen"
+    x-cloak
+    class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    @keydown.escape.window="addVersionOpen = false"
+  >
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" @click.stop>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold text-gray-900">Add Version</h2>
+        <button @click="addVersionOpen = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <form
+        hx-post="/prompts/{{ prompt.id }}/versions"
+        hx-target="#versions-list"
+        hx-swap="afterbegin"
+        @htmx:after-request.camel="addVersionOpen = false"
+      >
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Content Type</label>
+            <select
+              name="content_type"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+              <option value="text">Text</option>
+              <option value="chat">Chat</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Content <span class="text-red-500">*</span></label>
+            <textarea
+              name="content"
+              required
+              rows="8"
+              placeholder="Enter your prompt content..."
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono resize-y"
+            ></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+            <input
+              type="text"
+              name="model"
+              placeholder="e.g. claude-sonnet-4-6"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Parameters (JSON)</label>
+            <textarea
+              name="parameters"
+              rows="3"
+              placeholder='{"temperature": 0.7, "max_tokens": 1024}'
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono resize-none"
+            ></textarea>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            @click="addVersionOpen = false"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Create Version
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Failure Modal -->
+  <div
+    x-show="addFailureOpen"
+    x-cloak
+    class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    @keydown.escape.window="addFailureOpen = false"
+  >
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" @click.stop>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold text-gray-900">Add Failure</h2>
+        <button @click="addFailureOpen = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <form
+        hx-post="/prompts/{{ prompt.id }}/failures"
+        hx-target="#failures-list"
+        hx-swap="afterbegin"
+        @htmx:after-request.camel="addFailureOpen = false"
+      >
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Input Variables (JSON)</label>
+            <textarea
+              name="input_variables"
+              rows="3"
+              placeholder='{"variable": "value"}'
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono resize-none"
+            ></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Actual Output <span class="text-red-500">*</span></label>
+            <textarea
+              name="actual_output"
+              required
+              rows="4"
+              placeholder="What the LLM actually produced..."
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-y"
+            ></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Expected Output</label>
+            <textarea
+              name="expected_output"
+              rows="3"
+              placeholder="What it should have produced..."
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-y"
+            ></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Failure Reason</label>
+            <input
+              type="text"
+              name="failure_reason"
+              placeholder="e.g. hallucinated a citation"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <select
+              name="failure_category"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+              <option value="">Select category...</option>
+              <option value="hallucination">Hallucination</option>
+              <option value="wrong_answer">Wrong Answer</option>
+              <option value="format">Format</option>
+              <option value="refusal">Refusal</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            @click="addFailureOpen = false"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Add Failure
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Test Case Modal -->
+  <div
+    x-show="addTestCaseOpen"
+    x-cloak
+    class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    @keydown.escape.window="addTestCaseOpen = false"
+  >
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" @click.stop>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold text-gray-900">Add Test Case</h2>
+        <button @click="addTestCaseOpen = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <form
+        hx-post="/prompts/{{ prompt.id }}/test-cases"
+        hx-target="#test-cases-list"
+        hx-swap="afterbegin"
+        @htmx:after-request.camel="addTestCaseOpen = false"
+      >
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input
+              type="text"
+              name="name"
+              placeholder="e.g. Basic summarization"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Input Variables (JSON)</label>
+            <textarea
+              name="input_variables"
+              rows="3"
+              placeholder='{"article": "..."}'
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono resize-none"
+            ></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Expected Output</label>
+            <textarea
+              name="expected_output"
+              rows="4"
+              placeholder="What the model should produce..."
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-y"
+            ></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Eval Method</label>
+            <select
+              name="eval_method"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+              <option value="contains">Contains</option>
+              <option value="exact">Exact</option>
+              <option value="regex">Regex</option>
+              <option value="llm_judge">LLM Judge</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            @click="addTestCaseOpen = false"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Add Test Case
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Run Optimization Modal -->
+  <div
+    x-show="optModalOpen"
+    x-cloak
+    class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    @keydown.escape.window="optModalOpen = false"
+  >
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" @click.stop>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold text-gray-900">Run Optimization</h2>
+        <button @click="optModalOpen = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <form
+        hx-post="/prompts/{{ prompt.id }}/optimizations"
+        hx-target="#optimizations-list"
+        hx-swap="afterbegin"
+        hx-indicator="#opt-spinner"
+      >
+        <div class="space-y-5">
+          {% if failures %}
+            <div>
+              <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Failures to fix</p>
+              <div class="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {% for failure in failures %}
+                  <label class="flex items-start gap-2 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      name="failure_ids"
+                      value="{{ failure.id }}"
+                      class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    >
+                    <span class="text-sm text-gray-700 group-hover:text-gray-900 leading-snug">
+                      {% if failure.failure_reason %}
+                        {{ failure.failure_reason[:60] }}{% if failure.failure_reason|length > 60 %}…{% endif %}
+                      {% else %}
+                        {{ failure.actual_output[:60] }}{% if failure.actual_output|length > 60 %}…{% endif %}
+                      {% endif %}
+                    </span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          {% else %}
+            <p class="text-sm text-gray-400 italic">No failures available.</p>
+          {% endif %}
+
+          {% if test_cases %}
+            <div>
+              <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Test cases to preserve</p>
+              <div class="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {% for tc in test_cases %}
+                  <label class="flex items-start gap-2 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      name="test_case_ids"
+                      value="{{ tc.id }}"
+                      class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    >
+                    <span class="text-sm text-gray-700 group-hover:text-gray-900 leading-snug">
+                      {% if tc.name %}
+                        {{ tc.name[:60] }}{% if tc.name|length > 60 %}…{% endif %}
+                      {% elif tc.expected_output %}
+                        {{ tc.expected_output[:60] }}{% if tc.expected_output|length > 60 %}…{% endif %}
+                      {% else %}
+                        Test case {{ tc.id[:8] }}
+                      {% endif %}
+                    </span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          {% else %}
+            <p class="text-sm text-gray-400 italic">No test cases available.</p>
+          {% endif %}
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Optimizer Model</label>
+            <input
+              type="text"
+              name="optimizer_model"
+              value="claude-sonnet-4-6"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+          </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="opt-spinner" class="htmx-indicator items-center gap-2 text-indigo-600 mt-4">
+          <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          <span class="text-sm font-medium">Optimizing with Claude...</span>
+        </div>
+
+        <div class="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            @click="optModalOpen = false"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Run Optimization
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

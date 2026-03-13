@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evalfix — From red CI to green CI, without the guesswork</title>
+  <meta name="description" content="evalfix captures real failures from your LLM app, grows your ground truth automatically, and optimizes your prompts — so you ship fixes, not experiments.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            canvas: '#09090f',
+            surface: '#111118',
+            border: '#1e1e2e',
+            'border-light': '#2a2a3d',
+          },
+          animation: {
+            'fade-up': 'fadeUp 0.5s ease forwards',
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4,0,0.6,1) infinite',
+            'blink': 'blink 1.2s step-end infinite',
+            'glow-green': 'glowGreen 2s ease-in-out infinite alternate',
+            'glow-red': 'glowRed 2s ease-in-out infinite alternate',
+            'slide-in': 'slideIn 0.4s ease forwards',
+            'count-up': 'countUp 0.3s ease forwards',
+          },
+          keyframes: {
+            fadeUp: {
+              '0%': { opacity: '0', transform: 'translateY(16px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            blink: {
+              '0%, 100%': { opacity: '1' },
+              '50%': { opacity: '0' },
+            },
+            glowGreen: {
+              '0%': { boxShadow: '0 0 20px rgba(34,197,94,0.1)' },
+              '100%': { boxShadow: '0 0 40px rgba(34,197,94,0.25)' },
+            },
+            glowRed: {
+              '0%': { boxShadow: '0 0 20px rgba(239,68,68,0.1)' },
+              '100%': { boxShadow: '0 0 40px rgba(239,68,68,0.2)' },
+            },
+            slideIn: {
+              '0%': { opacity: '0', transform: 'translateX(-8px)' },
+              '100%': { opacity: '1', transform: 'translateX(0)' },
+            },
+            countUp: {
+              '0%': { opacity: '0', transform: 'translateY(4px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+
+    body {
+      background-color: #09090f;
+      color: #f1f5f9;
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Gradient mesh background */
+    .hero-bg {
+      background-color: #09090f;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 20% -10%, rgba(124,58,237,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 110%, rgba(79,70,229,0.08) 0%, transparent 60%);
+    }
+
+    /* Section gradient separator */
+    .section-fade {
+      background: linear-gradient(to bottom, transparent, rgba(124,58,237,0.04), transparent);
+    }
+
+    /* Noise texture overlay */
+    .noise::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      border-radius: inherit;
+    }
+
+    /* Terminal panel */
+    .terminal {
+      background: #0d0d16;
+      border: 1px solid #1e1e2e;
+      border-radius: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    .terminal-header {
+      background: #111118;
+      border-bottom: 1px solid #1e1e2e;
+      border-radius: 12px 12px 0 0;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    /* Score bar */
+    .score-bar {
+      height: 4px;
+      border-radius: 2px;
+      background: #1e1e2e;
+      overflow: hidden;
+    }
+    .score-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Code block */
+    .code-block {
+      background: #0d0d16;
+      border: 1px solid #1e1e2e;
+      border-radius: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .token-keyword  { color: #c084fc; }
+    .token-string   { color: #86efac; }
+    .token-comment  { color: #475569; }
+    .token-fn       { color: #7dd3fc; }
+    .token-var      { color: #f1f5f9; }
+    .token-attr     { color: #fbbf24; }
+    .token-punct    { color: #64748b; }
+    .token-import   { color: #c084fc; }
+
+    /* Gradient text */
+    .gradient-text {
+      background: linear-gradient(135deg, #a78bfa 0%, #818cf8 50%, #60a5fa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .gradient-text-green {
+      background: linear-gradient(135deg, #4ade80 0%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Glow button */
+    .btn-primary {
+      background: linear-gradient(135deg, #7c3aed, #6366f1);
+      box-shadow: 0 0 0 1px rgba(124,58,237,0.3), 0 4px 24px rgba(124,58,237,0.2);
+      transition: all 0.2s ease;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 0 1px rgba(124,58,237,0.5), 0 4px 32px rgba(124,58,237,0.35);
+      transform: translateY(-1px);
+    }
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid #2a2a3d;
+      transition: all 0.2s ease;
+    }
+    .btn-ghost:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: #3d3d5c;
+    }
+
+    /* Step connector line */
+    .step-line {
+      position: absolute;
+      top: 24px;
+      left: calc(50% + 32px);
+      right: calc(-50% + 32px);
+      height: 1px;
+      background: linear-gradient(to right, #2a2a3d, transparent);
+    }
+
+    /* Diff block */
+    .diff-add { background: rgba(34,197,94,0.08); border-left: 2px solid #22c55e; }
+    .diff-remove { background: rgba(239,68,68,0.08); border-left: 2px solid #ef4444; }
+
+    /* Pill badge */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    /* Card hover */
+    .feature-card {
+      background: #111118;
+      border: 1px solid #1e1e2e;
+      border-radius: 16px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .feature-card:hover {
+      border-color: #3730a3;
+      box-shadow: 0 0 0 1px rgba(99,102,241,0.1), 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    /* Input focus */
+    .email-input {
+      background: #111118;
+      border: 1px solid #2a2a3d;
+      color: #f1f5f9;
+      border-radius: 10px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .email-input:focus {
+      outline: none;
+      border-color: #7c3aed;
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
+    }
+    .email-input::placeholder { color: #475569; }
+
+    /* Smooth scroll */
+    html { scroll-behavior: smooth; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #09090f; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3d; border-radius: 3px; }
+
+    @keyframes typewriter {
+      from { width: 0; }
+      to { width: 100%; }
+    }
+
+    .typewriter {
+      overflow: hidden;
+      white-space: nowrap;
+      animation: typewriter 1.5s steps(40) forwards;
+    }
+
+    /* Animated border glow on hero panel */
+    @keyframes borderPulse {
+      0%, 100% { border-color: rgba(34,197,94,0.3); }
+      50% { border-color: rgba(34,197,94,0.6); }
+    }
+    .panel-green-glow {
+      animation: borderPulse 2.5s ease-in-out infinite;
+    }
+  </style>
+</head>
+
+<body class="hero-bg min-h-screen">
+
+<!-- ─── NAV ────────────────────────────────────────────────────────────────── -->
+<nav class="sticky top-0 z-50 border-b border-border" style="background: rgba(9,9,15,0.85); backdrop-filter: blur(12px);">
+  <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+
+    <!-- Logo -->
+    <a href="/" class="flex items-center gap-2.5 group">
+      <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background: linear-gradient(135deg, #7c3aed, #6366f1); box-shadow: 0 0 12px rgba(124,58,237,0.4);">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+        </svg>
+      </div>
+      <span class="font-semibold tracking-tight text-slate-100">evalfix</span>
+    </a>
+
+    <!-- Nav actions -->
+    <div class="flex items-center gap-3">
+      <a href="/dashboard" class="text-sm text-slate-400 hover:text-slate-200 transition-colors font-medium px-3 py-1.5">
+        Sign In
+      </a>
+      <a href="#early-access" class="btn-primary text-white text-sm font-semibold px-4 py-2 rounded-lg">
+        Get Early Access
+      </a>
+    </div>
+  </div>
+</nav>
+
+
+<!-- ─── HERO ───────────────────────────────────────────────────────────────── -->
+<section class="relative pt-24 pb-20 px-6 overflow-hidden">
+
+  <!-- Background glow orbs -->
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] pointer-events-none" style="background: radial-gradient(ellipse, rgba(124,58,237,0.06) 0%, transparent 70%);"></div>
+
+  <div class="max-w-6xl mx-auto">
+
+    <!-- Badge -->
+    <div class="flex justify-center mb-7">
+      <span class="badge" style="background: rgba(124,58,237,0.12); border: 1px solid rgba(124,58,237,0.25); color: #a78bfa;">
+        <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse-slow inline-block"></span>
+        AI-powered prompt debugging
+      </span>
+    </div>
+
+    <!-- Headline -->
+    <h1 class="text-center text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.05] mb-6">
+      <span class="text-slate-100">From red CI to green CI.</span><br>
+      <span class="gradient-text">Without the guesswork.</span>
+    </h1>
+
+    <!-- Subheadline -->
+    <p class="text-center text-slate-400 text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+      evalfix captures real failures from your LLM app, grows your ground truth from production, and auto-optimizes your prompts — so every fix is data-driven.
+    </p>
+
+    <!-- CTA row -->
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-20">
+      <a href="#early-access" class="btn-primary text-white text-sm font-semibold px-6 py-3 rounded-xl w-full sm:w-auto text-center">
+        Get Early Access — it's free
+      </a>
+      <a href="#how-it-works" class="btn-ghost text-slate-300 text-sm font-medium px-6 py-3 rounded-xl w-full sm:w-auto text-center">
+        See how it works
+        <span class="ml-1">↓</span>
+      </a>
+    </div>
+
+    <!-- Animated CI panel -->
+    <div
+      x-data="{
+        phase: 'before',
+        score: 0.42,
+        targetScore: 0.42,
+        failures: 3,
+        started: false,
+        init() {
+          setTimeout(() => { this.started = true; }, 600);
+          setInterval(() => {
+            if (this.phase === 'before') {
+              this.phase = 'optimizing';
+              setTimeout(() => {
+                this.phase = 'after';
+                this.animateScore();
+              }, 2200);
+            } else if (this.phase === 'after') {
+              setTimeout(() => {
+                this.phase = 'before';
+                this.score = 0.42;
+                this.failures = 3;
+              }, 4000);
+            }
+          }, 7000);
+        },
+        animateScore() {
+          const target = 0.91;
+          const duration = 1200;
+          const start = performance.now();
+          const from = 0.42;
+          const step = (now) => {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const ease = 1 - Math.pow(1 - progress, 3);
+            this.score = parseFloat((from + (target - from) * ease).toFixed(2));
+            if (progress < 1) requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
+        },
+        get scoreWidth() {
+          return (this.score * 100) + '%';
+        }
+      }"
+      class="relative max-w-4xl mx-auto"
+    >
+
+      <!-- Panel grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <!-- LEFT: Before / Optimizing -->
+        <div class="terminal" :class="phase === 'before' ? 'opacity-100' : 'opacity-60'" style="transition: opacity 0.5s ease;">
+
+          <!-- Terminal header -->
+          <div class="terminal-header justify-between">
+            <div class="flex items-center gap-1.5">
+              <div class="dot" style="background:#ff5f57"></div>
+              <div class="dot" style="background:#febc2e"></div>
+              <div class="dot" style="background:#28c840"></div>
+            </div>
+            <span class="text-slate-500 text-xs">ci/eval — prompt-v6</span>
+            <div class="flex items-center gap-1.5">
+              <template x-if="phase === 'before'">
+                <span class="badge text-xs" style="background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); color: #f87171; padding: 2px 8px; font-size: 10px;">● FAILING</span>
+              </template>
+              <template x-if="phase === 'optimizing'">
+                <span class="badge text-xs" style="background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.25); color: #fbbf24; padding: 2px 8px; font-size: 10px;">◌ OPTIMIZING</span>
+              </template>
+              <template x-if="phase === 'after'">
+                <span class="badge text-xs" style="background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.25); color: #4ade80; padding: 2px 8px; font-size: 10px;">● PASSING</span>
+              </template>
+            </div>
+          </div>
+
+          <!-- Terminal body -->
+          <div class="p-4 space-y-3 min-h-[200px]">
+
+            <!-- Status line -->
+            <div class="flex items-center gap-2 text-xs">
+              <template x-if="phase === 'before'">
+                <span class="text-red-400">✗ 3 failures detected</span>
+              </template>
+              <template x-if="phase === 'optimizing'">
+                <span class="text-yellow-400">⟳ Running AI optimizer...</span>
+              </template>
+              <template x-if="phase === 'after'">
+                <span class="text-green-400 font-medium">✓ All test cases passing</span>
+              </template>
+            </div>
+
+            <!-- Score meter -->
+            <div>
+              <div class="flex justify-between text-xs mb-1.5">
+                <span class="text-slate-500">eval score</span>
+                <span :class="phase === 'after' ? 'text-green-400' : 'text-red-400'" class="font-medium" x-text="score.toFixed(2)"></span>
+              </div>
+              <div class="score-bar">
+                <div class="score-fill" :class="phase === 'after' ? 'bg-green-500' : 'bg-red-500'" :style="'width: ' + scoreWidth"></div>
+              </div>
+            </div>
+
+            <!-- Failure traces -->
+            <template x-if="phase === 'before'">
+              <div class="space-y-2">
+                <div class="rounded-lg p-2.5" style="background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15);">
+                  <div class="text-red-400 text-xs mb-1">✗  claim-extractor › test_case_14</div>
+                  <div class="text-slate-500 text-xs">expected: "denied"  →  got: "approved"</div>
+                </div>
+                <div class="rounded-lg p-2.5" style="background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15);">
+                  <div class="text-red-400 text-xs mb-1">✗  claim-extractor › test_case_21</div>
+                  <div class="text-slate-500 text-xs">hallucination detected (llm_judge)</div>
+                </div>
+                <div class="rounded-lg p-2.5" style="background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15);">
+                  <div class="text-red-400 text-xs mb-1">✗  claim-extractor › test_case_33</div>
+                  <div class="text-slate-500 text-xs">format error: missing required fields</div>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="phase === 'optimizing'">
+              <div class="space-y-2">
+                <div class="text-xs text-slate-500 flex items-center gap-2">
+                  <span class="animate-pulse-slow">▸</span> analyzing 3 failures + 12 test cases
+                </div>
+                <div class="text-xs text-slate-500 flex items-center gap-2">
+                  <span class="animate-pulse-slow">▸</span> reading full trace context...
+                </div>
+                <div class="text-xs text-slate-500 flex items-center gap-2">
+                  <span class="animate-pulse-slow">▸</span> generating optimized prompt...
+                </div>
+                <div class="mt-3 h-1.5 rounded-full overflow-hidden" style="background:#1e1e2e;">
+                  <div class="h-full rounded-full bg-violet-500" style="width: 0%; animation: loadBar 2s ease forwards;">
+                    <style>@keyframes loadBar { to { width: 85%; } }</style>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="phase === 'after'">
+              <div class="space-y-2">
+                <div class="rounded-lg p-2.5" style="background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.15);">
+                  <div class="text-green-400 text-xs mb-1">✓  claim-extractor › test_case_14</div>
+                  <div class="text-slate-500 text-xs">output: "denied"  ✓  exact match</div>
+                </div>
+                <div class="rounded-lg p-2.5" style="background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.15);">
+                  <div class="text-green-400 text-xs mb-1">✓  claim-extractor › test_case_21</div>
+                  <div class="text-slate-500 text-xs">llm_judge: accurate, no hallucination</div>
+                </div>
+                <div class="rounded-lg p-2.5" style="background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.15);">
+                  <div class="text-green-400 text-xs mb-1">✓  claim-extractor › test_case_33</div>
+                  <div class="text-slate-500 text-xs">all required fields present ✓</div>
+                </div>
+              </div>
+            </template>
+
+          </div>
+        </div>
+
+        <!-- RIGHT: After state (always visible, dims when not active) -->
+        <div class="terminal panel-green-glow" :class="phase === 'after' ? 'opacity-100' : 'opacity-40'" style="transition: opacity 0.5s ease; border-color: rgba(34,197,94,0.2);">
+
+          <div class="terminal-header justify-between">
+            <div class="flex items-center gap-1.5">
+              <div class="dot" style="background:#ff5f57"></div>
+              <div class="dot" style="background:#febc2e"></div>
+              <div class="dot" style="background:#28c840"></div>
+            </div>
+            <span class="text-slate-500 text-xs">evalfix / optimizer</span>
+            <span class="badge text-xs" style="background: rgba(124,58,237,0.12); border: 1px solid rgba(124,58,237,0.25); color: #a78bfa; padding: 2px 8px; font-size: 10px;">AI</span>
+          </div>
+
+          <div class="p-4 space-y-3 min-h-[200px]">
+            <div class="text-xs text-slate-400 mb-2">prompt diff — v6 → v7</div>
+
+            <div class="space-y-1 text-xs font-mono">
+              <div class="diff-remove rounded px-2 py-1 text-red-400">
+                - Extract the claim decision from the text.
+              </div>
+              <div class="diff-add rounded px-2 py-1 text-green-400">
+                + Extract the final claim decision from the adjudicator's
+              </div>
+              <div class="diff-add rounded px-2 py-1 text-green-400">
+                + summary. Return ONLY "approved" or "denied". If the
+              </div>
+              <div class="diff-add rounded px-2 py-1 text-green-400">
+                + decision is ambiguous, return "pending".
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-border">
+              <div class="text-xs text-slate-500 mb-2">reasoning</div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Test cases 14 and 21 failed due to ambiguous extraction instructions. Added explicit output constraints and an ambiguity handler based on 3 captured failures.
+              </p>
+            </div>
+
+            <div class="flex items-center gap-2 pt-1">
+              <div class="flex-1 h-px bg-border"></div>
+              <span class="text-xs text-green-400 font-medium">score  0.42 → 0.91</span>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow / label between panels (hidden on mobile) -->
+      <div class="hidden md:flex absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex-col items-center gap-1 pointer-events-none">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background: rgba(124,58,237,0.2); border: 1px solid rgba(124,58,237,0.3);">
+          <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+          </svg>
+        </div>
+      </div>
+
+    </div>
+    <!-- /panel -->
+
+  </div>
+</section>
+
+
+<!-- ─── PROBLEM STRIP ─────────────────────────────────────────────────────── -->
+<section class="py-20 px-6 border-t border-border">
+  <div class="max-w-5xl mx-auto">
+
+    <p class="text-center text-slate-500 text-sm font-medium uppercase tracking-widest mb-12">The loop every LLM team is stuck in</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+      <div class="feature-card p-6">
+        <div class="w-10 h-10 rounded-xl mb-4 flex items-center justify-center text-xl" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2);">🔴</div>
+        <h3 class="font-semibold text-slate-100 mb-2">Your LLM breaks in prod</h3>
+        <p class="text-sm text-slate-400 leading-relaxed">You see the failure in your CI. You see the wrong output. But you don't see <em>why</em> — because the prompt alone doesn't tell the story.</p>
+      </div>
+
+      <div class="feature-card p-6">
+        <div class="w-10 h-10 rounded-xl mb-4 flex items-center justify-center text-xl" style="background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.2);">🔍</div>
+        <h3 class="font-semibold text-slate-100 mb-2">You look at the wrong thing</h3>
+        <p class="text-sm text-slate-400 leading-relaxed">Most teams debug the prompt in isolation. But the failure lives in the full trace — the inputs, the context, the interaction pattern. That's where we look.</p>
+      </div>
+
+      <div class="feature-card p-6">
+        <div class="w-10 h-10 rounded-xl mb-4 flex items-center justify-center text-xl" style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2);">🎲</div>
+        <h3 class="font-semibold text-slate-100 mb-2">You edit and re-deploy, hoping</h3>
+        <p class="text-sm text-slate-400 leading-relaxed">Each fix is a guess. It works on the examples you tested. It breaks on the ones you didn't. The cycle repeats — without a ground truth to anchor to.</p>
+      </div>
+
+    </div>
+
+    <div class="mt-10 text-center">
+      <p class="text-slate-300 text-lg font-medium">There's a better way. One that <span class="gradient-text font-semibold">learns from every failure.</span></p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─── HOW IT WORKS ───────────────────────────────────────────────────────── -->
+<section id="how-it-works" class="py-20 px-6 section-fade">
+  <div class="max-w-5xl mx-auto">
+
+    <div class="text-center mb-16">
+      <p class="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-3">How it works</p>
+      <h2 class="text-3xl sm:text-4xl font-bold text-slate-100 tracking-tight">Three steps. One flywheel.</h2>
+      <p class="text-slate-400 mt-3 max-w-xl mx-auto">The longer evalfix runs, the better it gets. Every failure makes your ground truth stronger.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+
+      <!-- Connector lines (desktop) -->
+      <div class="hidden md:block absolute top-6 left-1/3 right-1/3 h-px" style="background: linear-gradient(to right, transparent, rgba(124,58,237,0.3), transparent);"></div>
+
+      <!-- Step 1 -->
+      <div class="flex flex-col">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0" style="background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(99,102,241,0.1)); border: 1px solid rgba(124,58,237,0.3); color: #a78bfa;">1</div>
+          <div>
+            <h3 class="font-semibold text-slate-100">Capture failures</h3>
+            <p class="text-xs text-slate-500">from production, real-time</p>
+          </div>
+        </div>
+        <p class="text-sm text-slate-400 leading-relaxed mb-4">
+          One SDK call captures the full context of every LLM failure — inputs, actual output, expected output, failure category. No manual logging setup.
+        </p>
+        <div class="terminal p-3 text-xs mt-auto">
+          <span class="token-import">from</span> <span class="token-var"> evalfix </span><span class="token-import">import</span> <span class="token-fn">capture_failure</span><br>
+          <br>
+          <span class="token-fn">capture_failure</span><span class="token-punct">(</span><br>
+          &nbsp;&nbsp;<span class="token-attr">prompt_id</span><span class="token-punct">=</span><span class="token-string">"claim-extractor"</span><span class="token-punct">,</span><br>
+          &nbsp;&nbsp;<span class="token-attr">inputs</span><span class="token-punct">={</span><span class="token-string">"doc"</span><span class="token-punct">:</span> doc<span class="token-punct">},</span><br>
+          &nbsp;&nbsp;<span class="token-attr">actual</span><span class="token-punct">=</span>response<span class="token-punct">,</span><br>
+          &nbsp;&nbsp;<span class="token-attr">expected</span><span class="token-punct">=</span><span class="token-string">"denied"</span><br>
+          <span class="token-punct">)</span>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="flex flex-col">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0" style="background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(99,102,241,0.1)); border: 1px solid rgba(124,58,237,0.3); color: #a78bfa;">2</div>
+          <div>
+            <h3 class="font-semibold text-slate-100">Grow ground truth</h3>
+            <p class="text-xs text-slate-500">automatically, from real data</p>
+          </div>
+        </div>
+        <p class="text-sm text-slate-400 leading-relaxed mb-4">
+          Most teams already have a ground truth — we grow it. Promote any failure to a test case with one click. Your eval suite gets stronger with every bug you hit.
+        </p>
+        <div class="feature-card p-3 mt-auto">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs text-slate-400">Ground truth</span>
+            <span class="text-xs font-medium text-violet-400">+3 this week</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 text-xs">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></span>
+              <span class="text-slate-400">test_case_14 — exact match</span>
+              <span class="ml-auto text-green-400 text-xs">from failure</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></span>
+              <span class="text-slate-400">test_case_21 — llm_judge</span>
+              <span class="ml-auto text-green-400 text-xs">from failure</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0"></span>
+              <span class="text-slate-400">test_case_33 — regex</span>
+              <span class="ml-auto text-violet-400 text-xs">manual</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="flex flex-col">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0" style="background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(99,102,241,0.1)); border: 1px solid rgba(124,58,237,0.3); color: #a78bfa;">3</div>
+          <div>
+            <h3 class="font-semibold text-slate-100">Fix and ship</h3>
+            <p class="text-xs text-slate-500">with AI, with confidence</p>
+          </div>
+        </div>
+        <p class="text-sm text-slate-400 leading-relaxed mb-4">
+          evalfix reads the full trace — not just the prompt — and uses AI to generate an improved version. Review the diff, run the evals, accept or reject. CI goes green.
+        </p>
+        <div class="feature-card p-3 mt-auto">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-slate-400">Optimization run</span>
+            <span class="text-xs font-medium text-green-400">+49pts</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="text-xs text-slate-500 mb-1">before</div>
+              <div class="score-bar">
+                <div class="score-fill bg-red-500" style="width: 42%"></div>
+              </div>
+              <div class="text-xs text-red-400 mt-1">0.42</div>
+            </div>
+            <svg class="w-4 h-4 text-slate-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            </svg>
+            <div class="flex-1">
+              <div class="text-xs text-slate-500 mb-1">after</div>
+              <div class="score-bar">
+                <div class="score-fill bg-green-500" style="width: 91%"></div>
+              </div>
+              <div class="text-xs text-green-400 mt-1">0.91</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── DIFFERENTIATOR ────────────────────────────────────────────────────── -->
+<section class="py-20 px-6 border-t border-border">
+  <div class="max-w-5xl mx-auto">
+
+    <div class="text-center mb-14">
+      <p class="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-3">Why not just edit the prompt yourself?</p>
+      <h2 class="text-3xl sm:text-4xl font-bold text-slate-100 tracking-tight">Debugging requires context.<br>Most tools give you none.</h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+
+      <!-- Without evalfix -->
+      <div class="feature-card p-6">
+        <div class="flex items-center gap-2 mb-5">
+          <div class="w-2 h-2 rounded-full bg-red-500"></div>
+          <span class="text-sm font-semibold text-slate-300">Without evalfix</span>
+        </div>
+        <ul class="space-y-3">
+          <li class="flex items-start gap-3 text-sm text-slate-400">
+            <span class="text-red-500 mt-0.5 shrink-0">✗</span>
+            Edit the prompt manually, based on one failing example
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-400">
+            <span class="text-red-500 mt-0.5 shrink-0">✗</span>
+            Test on 2–3 examples you happened to remember
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-400">
+            <span class="text-red-500 mt-0.5 shrink-0">✗</span>
+            Deploy and find out in production if it worked
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-400">
+            <span class="text-red-500 mt-0.5 shrink-0">✗</span>
+            No version history, no diff, no accountability
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-400">
+            <span class="text-red-500 mt-0.5 shrink-0">✗</span>
+            Fix one thing, break another. Repeat forever.
+          </li>
+        </ul>
+      </div>
+
+      <!-- With evalfix -->
+      <div class="p-6 rounded-2xl" style="background: rgba(124,58,237,0.05); border: 1px solid rgba(124,58,237,0.2);">
+        <div class="flex items-center gap-2 mb-5">
+          <div class="w-2 h-2 rounded-full bg-green-500"></div>
+          <span class="text-sm font-semibold text-slate-300">With evalfix</span>
+        </div>
+        <ul class="space-y-3">
+          <li class="flex items-start gap-3 text-sm text-slate-300">
+            <span class="text-green-400 mt-0.5 shrink-0">✓</span>
+            Production failures auto-captured with full trace context
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-300">
+            <span class="text-green-400 mt-0.5 shrink-0">✓</span>
+            Ground truth grows from real failures, not invented cases
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-300">
+            <span class="text-green-400 mt-0.5 shrink-0">✓</span>
+            AI optimizer reads the full picture before making changes
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-300">
+            <span class="text-green-400 mt-0.5 shrink-0">✓</span>
+            Version history, diffs, and eval scores for every change
+          </li>
+          <li class="flex items-start gap-3 text-sm text-slate-300">
+            <span class="text-green-400 mt-0.5 shrink-0">✓</span>
+            Evaluate before you ship. Every time.
+          </li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- Pull quote -->
+    <div class="text-center p-8 rounded-2xl" style="background: rgba(124,58,237,0.05); border: 1px solid rgba(124,58,237,0.15);">
+      <p class="text-slate-300 text-lg leading-relaxed max-w-2xl mx-auto">
+        "We're not a prompting framework. We're the accuracy layer that sits between your LLM app and your CI — and we get smarter the longer you run it."
+      </p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─── EVAL METHODS STRIP ─────────────────────────────────────────────────── -->
+<section class="py-14 px-6 border-t border-border">
+  <div class="max-w-4xl mx-auto text-center">
+
+    <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-6">Evaluation methods</p>
+
+    <div class="flex flex-wrap justify-center gap-3 mb-5">
+      <span class="badge" style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); color: #a5b4fc;">Exact match</span>
+      <span class="badge" style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); color: #a5b4fc;">Contains</span>
+      <span class="badge" style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); color: #a5b4fc;">Regex</span>
+      <span class="badge" style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); color: #a5b4fc;">LLM-as-judge</span>
+      <span class="badge" style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); color: #a5b4fc;">Custom</span>
+    </div>
+
+    <p class="text-sm text-slate-500">Evaluate the way your use case demands — from deterministic checks to AI-graded rubrics.</p>
+
+  </div>
+</section>
+
+
+<!-- ─── CODE INTEGRATION ────────────────────────────────────────────────────── -->
+<section class="py-20 px-6 border-t border-border">
+  <div class="max-w-3xl mx-auto">
+
+    <div class="text-center mb-10">
+      <p class="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-3">Integration</p>
+      <h2 class="text-3xl font-bold text-slate-100 tracking-tight">Drop it in. That's it.</h2>
+      <p class="text-slate-400 mt-3">No new infrastructure. No eval framework to learn. Works alongside whatever you're already building.</p>
+    </div>
+
+    <div class="code-block overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div class="flex items-center gap-2">
+          <div class="dot" style="background:#ff5f57; width:10px;height:10px;border-radius:50%;"></div>
+          <div class="dot" style="background:#febc2e; width:10px;height:10px;border-radius:50%;"></div>
+          <div class="dot" style="background:#28c840; width:10px;height:10px;border-radius:50%;"></div>
+        </div>
+        <span class="text-slate-500 text-xs">claim_handler.py</span>
+        <div></div>
+      </div>
+      <div class="p-5">
+        <pre class="text-sm leading-relaxed overflow-x-auto"><span class="token-import">from</span><span class="token-var"> evalfix </span><span class="token-import">import</span> <span class="token-fn">capture_failure</span><span class="token-punct">,</span> <span class="token-fn">get_active_prompt</span>
+
+<span class="token-comment"># evalfix manages your prompt versions</span>
+<span class="token-var">prompt </span><span class="token-punct">= </span><span class="token-fn">get_active_prompt</span><span class="token-punct">(</span><span class="token-string">"claim-extractor"</span><span class="token-punct">)</span>
+
+<span class="token-keyword">def</span> <span class="token-fn">process_claim</span><span class="token-punct">(</span><span class="token-var">document</span><span class="token-punct">: </span><span class="token-var">str</span><span class="token-punct">) -> </span><span class="token-var">str</span><span class="token-punct">:</span>
+    <span class="token-var">response </span><span class="token-punct">= </span><span class="token-var">llm</span><span class="token-punct">.</span><span class="token-fn">complete</span><span class="token-punct">(</span><span class="token-var">prompt</span><span class="token-punct">,</span> <span class="token-var">document</span><span class="token-punct">)</span>
+
+    <span class="token-comment"># If validation fails, capture it for evalfix</span>
+    <span class="token-keyword">if not</span> <span class="token-fn">is_valid_decision</span><span class="token-punct">(</span><span class="token-var">response</span><span class="token-punct">):</span>
+        <span class="token-fn">capture_failure</span><span class="token-punct">(</span>
+            <span class="token-attr">prompt_id</span><span class="token-punct">=</span><span class="token-string">"claim-extractor"</span><span class="token-punct">,</span>
+            <span class="token-attr">inputs</span><span class="token-punct">={</span><span class="token-string">"document"</span><span class="token-punct">:</span> <span class="token-var">document</span><span class="token-punct">},</span>
+            <span class="token-attr">actual_output</span><span class="token-punct">=</span><span class="token-var">response</span><span class="token-punct">,</span>
+            <span class="token-attr">category</span><span class="token-punct">=</span><span class="token-string">"wrong_answer"</span>
+        <span class="token-punct">)</span>
+
+    <span class="token-keyword">return</span> <span class="token-var">response</span></pre>
+      </div>
+    </div>
+
+    <p class="text-center text-slate-500 text-sm mt-5">
+      evalfix handles the versioning, test running, and optimization loop.<br>You handle the business logic.
+    </p>
+
+  </div>
+</section>
+
+
+<!-- ─── FINAL CTA ──────────────────────────────────────────────────────────── -->
+<section id="early-access" class="py-24 px-6 border-t border-border relative overflow-hidden">
+
+  <!-- Background glow -->
+  <div class="absolute inset-0 pointer-events-none" style="background: radial-gradient(ellipse 70% 60% at 50% 100%, rgba(124,58,237,0.1) 0%, transparent 70%);"></div>
+
+  <div class="max-w-xl mx-auto text-center relative z-10"
+    x-data="{
+      email: '',
+      submitted: false,
+      submitting: false,
+      submit() {
+        if (!this.email || !this.email.includes('@')) return;
+        this.submitting = true;
+        setTimeout(() => {
+          this.submitted = true;
+          this.submitting = false;
+        }, 800);
+      }
+    }"
+  >
+
+    <template x-if="!submitted">
+      <div>
+        <div class="flex justify-center mb-6">
+          <div class="w-14 h-14 rounded-2xl flex items-center justify-center" style="background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(99,102,241,0.1)); border: 1px solid rgba(124,58,237,0.3); box-shadow: 0 0 40px rgba(124,58,237,0.15);">
+            <svg class="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+            </svg>
+          </div>
+        </div>
+
+        <h2 class="text-3xl sm:text-4xl font-bold text-slate-100 tracking-tight mb-3">
+          Your next prompt fix<br>shouldn't be a guess.
+        </h2>
+
+        <p class="text-slate-400 mb-8 leading-relaxed">
+          Join early and get evalfix free while we're in beta. We'll help you set up your first prompt project.
+        </p>
+
+        <form @submit.prevent="submit()" class="flex flex-col sm:flex-row gap-3">
+          <input
+            type="email"
+            x-model="email"
+            placeholder="you@company.com"
+            required
+            class="email-input flex-1 px-4 py-3 text-sm"
+          >
+          <button
+            type="submit"
+            :disabled="submitting"
+            class="btn-primary text-white text-sm font-semibold px-6 py-3 rounded-xl shrink-0"
+            :class="submitting ? 'opacity-70 cursor-not-allowed' : ''"
+          >
+            <span x-show="!submitting">Request Early Access</span>
+            <span x-show="submitting" class="flex items-center gap-2">
+              <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              Sending...
+            </span>
+          </button>
+        </form>
+
+        <p class="text-slate-600 text-xs mt-4">No credit card. No spam. You'll hear from us within 24 hours.</p>
+      </div>
+    </template>
+
+    <template x-if="submitted">
+      <div class="py-8">
+        <div class="flex justify-center mb-5">
+          <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); box-shadow: 0 0 40px rgba(34,197,94,0.15);">
+            <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+        </div>
+        <h3 class="text-2xl font-bold text-slate-100 mb-2">You're on the list.</h3>
+        <p class="text-slate-400">We'll reach out within 24 hours to get you set up. In the meantime, you can explore the app.</p>
+        <a href="/dashboard" class="inline-block mt-6 btn-primary text-white text-sm font-semibold px-6 py-3 rounded-xl">
+          Open the app →
+        </a>
+      </div>
+    </template>
+
+  </div>
+</section>
+
+
+<!-- ─── FOOTER ─────────────────────────────────────────────────────────────── -->
+<footer class="border-t border-border py-8 px-6">
+  <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div class="flex items-center gap-2">
+      <div class="w-5 h-5 rounded-md flex items-center justify-center" style="background: linear-gradient(135deg, #7c3aed, #6366f1);">
+        <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+        </svg>
+      </div>
+      <span class="text-slate-500 text-sm font-medium">evalfix</span>
+    </div>
+    <p class="text-slate-600 text-xs">Built for teams shipping LLM applications at scale.</p>
+    <a href="/dashboard" class="text-slate-500 hover:text-slate-300 text-sm transition-colors">Open app →</a>
+  </div>
+</footer>
+
+</body>
+</html>
