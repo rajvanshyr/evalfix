@@ -36,6 +36,11 @@ def run_optimization(optimization_run_id: str):
             base_version, failures, test_cases, opt_run.optimizer_model
         )
 
+        # Claude sometimes returns the chat array as a parsed list rather than
+        # a JSON string — serialize it back before storing in the Text column.
+        if isinstance(improved_content, list):
+            improved_content = json.dumps(improved_content)
+
         # Determine the next version number for this prompt
         latest = (
             PromptVersion.query

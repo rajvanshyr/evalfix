@@ -1,0 +1,40 @@
+tests:
+  - id: booking_appointment_happy_path
+    input: "I need to schedule an oil change for my car next Tuesday at 2 PM"
+    expected: "Assistant confirms the appointment request, collects or acknowledges the necessary details (date, time, service type), and provides next steps for booking"
+    grader: semantic
+
+  - id: pricing_question_standard
+    input: "How much does a brake pad replacement typically cost?"
+    expected: "Assistant provides pricing information for brake pad replacement service, potentially with a range or note that final price depends on vehicle type"
+    grader: semantic
+
+  - id: repair_procedure_explanation
+    input: "Can you explain what happens during a transmission fluid flush?"
+    expected: "Assistant explains the transmission fluid flush procedure in clear, accessible language that a non-mechanic can understand"
+    grader: semantic
+
+  - id: off_topic_redirect
+    input: "What's the capital of Ohio?"
+    expected: "Assistant politely redirects the conversation back to auto repair services, reminding the user of their purpose as a support assistant for the repair shop"
+    grader: semantic
+
+  - id: vague_appointment_request
+    input: "I want to come in sometime soon"
+    expected: "Assistant acknowledges the appointment interest and asks clarifying questions about preferred dates, times, and specific services needed"
+    grader: semantic
+
+  - id: complex_repair_inquiry
+    input: "My car is making a grinding noise when I brake and the pedal feels spongy. What could be wrong and how much would it cost?"
+    expected: "Assistant explains potential causes (worn pads, air in lines, etc.), recommends diagnostic inspection, and notes that pricing requires evaluation of the specific issue"
+    grader: semantic
+
+  - id: multiple_services_booking
+    input: "I need an oil change, tire rotation, and air filter replacement. Can I do all three in one visit?"
+    expected: "Assistant confirms that multiple services can typically be done together, asks for preferred date/time, and sets expectations about appointment duration"
+    grader: semantic
+
+  - id: urgent_issue_request
+    input: "My car won't start. Can you help me get an emergency appointment today?"
+    expected: "Assistant treats request as urgent, expresses willingness to help with emergency scheduling, and asks for details about availability and vehicle symptoms"
+    grader: semantic

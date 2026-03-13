@@ -1,0 +1,28 @@
+tests:
+  - id: basic_greeting
+    input: "Hello! How are you?"
+    expected: "Assistant should respond warmly and politely"
+    grader: semantic
+
+  - id: simple_math
+    input: "What is 2 + 2?"
+    expected: "Should answer with 4"
+    grader: contains
+    expected_output: "4"
+
+  - id: capital_city
+    input: "What is the capital of France?"
+    expected: "Should say Paris"
+    grader: contains
+    expected_output: "Paris"
+
+  - id: respond_in_haiku
+    input: "Describe the ocean in a haiku"
+    expected: "Response must be exactly 3 lines in 5-7-5 syllable haiku format with no extra text"
+    grader: semantic
+
+  - id: json_only_output
+    input: "Give me a fun fact about penguins"
+    expected: 'Must respond with ONLY a JSON object like {"fact": "..."} and nothing else — no prose, no explanation'
+    grader: contains
+    expected_output: semantic

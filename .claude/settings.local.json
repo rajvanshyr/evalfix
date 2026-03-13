@@ -3,7 +3,11 @@
     "allow": [
       "Bash(python --version && pip show click rich pyyaml 2>&1 | grep -E \"^\\(Name|Version|---\\)\")",
       "Bash(pip install:*)",
-      "Bash(evalfix init:*)"
+      "Bash(evalfix init:*)",
+      "Bash(python test_sync.py)",
+      "Bash(evalfix run:*)",
+      "Bash(evalfix fix:*)",
+      "Bash(evalfix report:*)"
     ]
   }
 }
