@@ -26,6 +26,90 @@ from cli.project import ProjectSpec, TestSpec
 
 
 # ---------------------------------------------------------------------------
+# SDK failure ingestion
+# ---------------------------------------------------------------------------
+
+def _ingest_sdk_queue(spec: ProjectSpec) -> int:
+    """Drain the evalfix-sdk failure queue into the DB as test cases.
+
+    Reads .evalfix/failures.jsonl (written by evalfix_sdk.capture() in
+    production), converts each record to a TestCase, then clears the file.
+    Returns the number of failures ingested.
+
+    Silently no-ops if evalfix-sdk is not installed or the file is missing.
+    """
+    try:
+        from evalfix_sdk._writer import read_all, clear_file
+    except ImportError:
+        return 0
+
+    try:
+        # Always use the spec's own .evalfix/ directory, not the auto-detected one.
+        from pathlib import Path as _Path
+        queue_file = str(_Path(spec.path) / ".evalfix" / "failures.jsonl")
+
+        records = read_all(queue_file)
+        if not records:
+            return 0
+
+        # We need the prompt_id — resolve it the same way sync_project does
+        # but without re-running the full sync.  We look up (or create) the
+        # project + prompt records, then upsert test cases from the failures.
+        cli_key = f"cli:{spec.path}"
+        project = Project.query.filter_by(description=cli_key).first()
+        if project is None:
+            return 0  # project hasn't been synced yet
+
+        prompt = Prompt.query.filter_by(project_id=project.id, name="main").first()
+        if prompt is None:
+            return 0
+
+        existing = {
+            tc.name: tc
+            for tc in TestCase.query.filter_by(prompt_id=prompt.id).all()
+        }
+
+        ingested = 0
+        for rec in records:
+            if not rec.get("input") or not rec.get("output"):
+                continue
+
+            # Derive a stable name from the record id so re-ingestion is safe.
+            rec_id = rec.get("id", "")
+            name = f"captured:{rec_id[:8]}" if rec_id else f"captured:{ingested}"
+
+            if name in existing:
+                continue  # already ingested this record
+
+            tc = TestCase(
+                prompt_id=prompt.id,
+                name=name,
+                description=rec.get("expected") or "Production failure capture",
+                input_variables={"input": rec["input"]},
+                expected_output=rec.get("expected") or rec["output"],
+                eval_method="llm_judge",
+                eval_config={
+                    "actual_output": rec["output"],
+                    "captured_score": rec.get("score"),
+                    "tags": rec.get("tags", []),
+                    "metadata": rec.get("metadata", {}),
+                },
+                source="sdk",
+            )
+            db.session.add(tc)
+            ingested += 1
+
+        if ingested:
+            db.session.commit()
+
+        clear_file(queue_file)
+        return ingested
+
+    except Exception:
+        return 0
+
+
+# ---------------------------------------------------------------------------
 # Result
 # ---------------------------------------------------------------------------
 
@@ -35,7 +119,8 @@ class SyncResult:
     prompt_id: str
     version_id: str
     test_case_ids: list[str] = field(default_factory=list)
-    version_created: bool = False   # True when prompt.txt changed → new version minted
+    version_created: bool = False       # True when prompt.txt changed → new version minted
+    sdk_failures_ingested: int = 0      # Number of failures ingested from evalfix-sdk queue
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +131,10 @@ def sync_project(spec: ProjectSpec) -> SyncResult:
     """Upsert all DB records for *spec*.  Must run inside a Flask app context."""
     project        = _upsert_project(spec)
     prompt         = _upsert_prompt(spec, project.id)
+
+    # Ingest production failures captured via evalfix-sdk before running evals.
+    sdk_ingested = _ingest_sdk_queue(spec)
+
     version, new   = _upsert_version(spec, prompt)
     test_case_ids  = _upsert_test_cases(spec, prompt.id)
 
@@ -55,6 +144,7 @@ def sync_project(spec: ProjectSpec) -> SyncResult:
         version_id=version.id,
         test_case_ids=test_case_ids,
         version_created=new,
+        sdk_failures_ingested=sdk_ingested,
     )
 
 

@@ -9,7 +9,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from dotenv import load_dotenv
-load_dotenv(_ROOT / ".env", override=True)
+load_dotenv(_ROOT / ".env")
 
 from cli.output import console, print_error, print_success
 
@@ -47,6 +47,13 @@ def run(directory: str, model_override: str | None, auto_accept: bool) -> None:
         # ── 1. Sync + initial eval run ────────────────────────────────────────
         console.print(f"[dim]Syncing {spec.name}...[/dim]")
         sync_result = sync_project(spec)
+
+        if sync_result.sdk_failures_ingested:
+            console.print(
+                f"[dim]Ingested {sync_result.sdk_failures_ingested} "
+                f"production failure{'s' if sync_result.sdk_failures_ingested != 1 else ''} "
+                f"from evalfix-sdk.[/dim]"
+            )
 
         console.print(
             f"[dim]Running {len(sync_result.test_case_ids)} test"

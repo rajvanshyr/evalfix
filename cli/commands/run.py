@@ -11,7 +11,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from dotenv import load_dotenv
-load_dotenv(_ROOT / ".env", override=True)
+load_dotenv(_ROOT / ".env")
 
 from cli.output import console, print_error
 
@@ -46,6 +46,13 @@ def run(directory: str, model_override: str | None, as_json: bool) -> None:
         if not as_json:
             console.print(f"[dim]Syncing {spec.name}...[/dim]")
         sync_result = sync_project(spec)
+
+        if not as_json and sync_result.sdk_failures_ingested:
+            console.print(
+                f"[dim]Ingested {sync_result.sdk_failures_ingested} "
+                f"production failure{'s' if sync_result.sdk_failures_ingested != 1 else ''} "
+                f"from evalfix-sdk.[/dim]"
+            )
 
         if not as_json and sync_result.version_created:
             console.print(f"[dim]New prompt version minted (v"
