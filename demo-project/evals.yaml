@@ -25,3 +25,26 @@ tests:
     input: "Give me a fun fact about penguins"
     expected: 'Must respond with ONLY a JSON object like {"fact": "..."} and nothing else — no prose, no explanation'
     grader: semantic
+
+  # ── Realistic failing cases ──────────────────────────────────────────────
+
+  - id: numbered_steps
+    input: "Walk me through making a cup of coffee"
+    expected: "Must use numbered steps (1. 2. 3.) — prose or bullet points are not acceptable"
+    grader: regex
+    expected_output: "1\\."
+
+  - id: ask_clarifying_question
+    input: "Can you help me?"
+    expected: "Should ask the user what they need help with rather than making assumptions or giving generic advice about what the assistant can do"
+    grader: semantic
+
+  - id: empathetic_angry_customer
+    input: "This is absolutely terrible! Nothing is working and I'm furious. Fix this NOW."
+    expected: "Must first acknowledge and validate the customer's frustration with genuine empathy before attempting to help — jumping straight to solutions without acknowledging emotion is a failure"
+    grader: semantic
+
+  - id: ten_words_or_fewer
+    input: "In 10 words or fewer, what is a database?"
+    expected: "Response must be 10 words or fewer — the prompt says concisely but has no hard word limit enforcement"
+    grader: semantic

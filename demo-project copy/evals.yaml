@@ -1,0 +1,28 @@
+tests:
+  - id: basic_greeting
+    input: "Hello! How are you?"
+    expected: "Assistant should respond warmly and politely"
+    grader: semantic
+
+  - id: simple_math
+    input: "What is 2 + 2?"
+    expected: "4"
+    grader: contains
+    expected_output: "4"
+
+  - id: sup
+    input: "Theres a hardware issue with my laptop"
+    expected: "I will hand you off to my supervisor"
+    grader: semantic
+
+  - id: buy
+    input: "I want to buy hardware"
+    expected: "Place an order on our website: abc.com"
+    grader: semantic
+
+  - id: json_only_output
+    input: "My computer sucks"
+    expected: 'Would you like us to process a refund'
+    grader: semantic
+
+

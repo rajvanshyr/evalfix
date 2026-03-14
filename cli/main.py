@@ -11,10 +11,11 @@ def cli():
 
     \b
     Typical workflow:
-      evalfix init my-project/    Generate a starter eval suite from your prompt
-      evalfix run  my-project/    Run evals against the current prompt
-      evalfix fix  my-project/    Run evals, analyze failures, apply an AI patch
-      evalfix report my-project/  Show last run results in the terminal (or HTML)
+      evalfix init    my-project/  Generate a starter eval suite from your prompt
+      evalfix run     my-project/  Run evals against the current prompt
+      evalfix fix     my-project/  Run evals, analyze failures, apply an AI patch
+      evalfix report  my-project/  Show last run results in the terminal (or HTML)
+      evalfix history my-project/  Show score trends across all runs
     """
 
 
@@ -78,3 +79,19 @@ def report(directory, html):
     """
     from cli.commands.report import run as do_report
     do_report(directory, write_html=html)
+
+
+@cli.command()
+@click.argument("directory", default=".", metavar="PROJECT_DIR")
+@click.option("--html", is_flag=True, default=False,
+              help="Write a score chart to PROJECT_DIR/history.html.")
+@click.option("--last", default=None, type=int, metavar="N",
+              help="Show only the last N runs.")
+def history(directory, html, last):
+    """Show score trends across all runs.
+
+    Displays a table of every eval run for this project ordered by time,
+    with pass/fail counts, scores, and trend arrows.
+    """
+    from cli.commands.history import run as do_history
+    do_history(directory, write_html=html, last_n=last)

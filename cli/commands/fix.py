@@ -8,6 +8,9 @@ _ROOT = Path(__file__).parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from dotenv import load_dotenv
+load_dotenv(_ROOT / ".env", override=True)
+
 from cli.output import console, print_error, print_success
 
 

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>evalfix report — demo-project</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, system-ui, sans-serif; background: #09090f; color: #f1f5f9;
+            -webkit-font-smoothing: antialiased; padding: 40px 24px; }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    .header { background: #111118; border: 1px solid #1e1e2e; border-radius: 12px;
+               padding: 20px 24px; margin-bottom: 24px; }
+    .header-top { display: flex; align-items: center; justify-content: space-between;
+                   margin-bottom: 8px; }
+    .project { font-size: 20px; font-weight: 700; color: #f1f5f9; }
+    .meta { font-size: 13px; color: #64748b; }
+    .status { font-size: 13px; font-weight: 700; color: #ef4444; }
+    .stats { display: flex; gap: 24px; margin-top: 12px; }
+    .stat { font-size: 13px; color: #94a3b8; }
+    .stat span { font-weight: 600; color: #f1f5f9; }
+    table { width: 100%; border-collapse: collapse; background: #111118;
+             border: 1px solid #1e1e2e; border-radius: 12px; overflow: hidden; }
+    th { background: #0d0d16; padding: 10px 14px; text-align: left;
+          font-size: 11px; font-weight: 600; color: #64748b;
+          text-transform: uppercase; letter-spacing: .05em; }
+    td { padding: 10px 14px; font-size: 13px; color: #cbd5e1;
+          border-top: 1px solid #1e1e2e; vertical-align: top; }
+    code { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #a78bfa; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+              font-size: 11px; font-weight: 700; color: #fff; }
+    .reasoning { font-size: 12px; color: #94a3b8; font-style: italic; margin-top: 4px; }
+    .error { font-size: 12px; color: #f87171; margin-top: 4px; }
+    .footer { margin-top: 24px; text-align: center; font-size: 12px; color: #334155; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="header-top">
+        <div class="project">demo-project</div>
+        <div class="status">FAILED</div>
+      </div>
+      <div class="meta">2026-03-13 22:46 UTC</div>
+      <div class="stats">
+        <div class="stat">Tests <span>5</span></div>
+        <div class="stat">Passed <span style="color:#22c55e">4</span></div>
+        <div class="stat">Failed <span style="color:#ef4444">1</span></div>
+        <div class="stat">Avg score <span>0.79</span></div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Test</th><th>Input</th><th>Expected</th>
+          <th>Result</th><th>Score</th><th>Latency</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+        <tr style="background:#f0fdf4">
+          <td><code>basic_greeting</code></td>
+          <td>Hello! How are you?</td>
+          <td>Assistant should respond warmly and politely</td>
+          <td><span class="badge" style="background:#16a34a">pass</span></td>
+          <td>0.95</td>
+          <td>490ms</td>
+        </tr>
+        <tr style="background:#f0fdf4"><td></td><td colspan="5"><div class="reasoning">The response is warm, polite, and friendly. It includes a greeting, expresses willingness to help, and asks about the user's wellbeing. Minor deduction only because 'doing well' could be slightly more personalized, but this is a minor point. Overall, it excellently matches the expected output.</div></td></tr>
+        
+        <tr style="background:#f0fdf4">
+          <td><code>simple_math</code></td>
+          <td>What is 2 + 2?</td>
+          <td>4</td>
+          <td><span class="badge" style="background:#16a34a">pass</span></td>
+          <td>1.00</td>
+          <td>510ms</td>
+        </tr>
+        
+        
+        <tr style="background:#f0fdf4">
+          <td><code>capital_city</code></td>
+          <td>What is the capital of France?</td>
+          <td>Paris</td>
+          <td><span class="badge" style="background:#16a34a">pass</span></td>
+          <td>1.00</td>
+          <td>614ms</td>
+        </tr>
+        
+        
+        <tr style="background:#f0fdf4">
+          <td><code>respond_in_haiku</code></td>
+          <td>Describe the ocean in a haiku</td>
+          <td>Response must be exactly 3 lines in 5-7-5 syllable haiku format with no extra text</td>
+          <td><span class="badge" style="background:#16a34a">pass</span></td>
+          <td>1.00</td>
+          <td>1535ms</td>
+        </tr>
+        <tr style="background:#f0fdf4"><td></td><td colspan="5"><div class="reasoning">The output is exactly 3 lines in proper 5-7-5 haiku format (Waves crash and retreat = 5, Salt spray kissing ancient rocks = 7, Blue depths call below = 5) with no extra text.</div></td></tr>
+        
+        <tr style="background:#fef2f2">
+          <td><code>json_only_output</code></td>
+          <td>Give me a fun fact about penguins</td>
+          <td>semantic</td>
+          <td><span class="badge" style="background:#dc2626">FAIL</span></td>
+          <td>0.00</td>
+          <td>1291ms</td>
+        </tr>
+        
+        
+      </tbody>
+    </table>
+
+    <div class="footer">Generated by evalfix</div>
+  </div>
+</body>
+</html>
